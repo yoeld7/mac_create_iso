@@ -33,65 +33,65 @@ jobs:
           CATALOG_URL="https://swcatalog.apple.com/content/catalogs/others/index-${MAJOR}.sucatalog.gz"
           curl -sL "$CATALOG_URL" -o catalog.gz
           python3 <<'PYCODE'
-import gzip, plistlib, os, sys
-
-version = os.environ["VERSION"]
-
-with gzip.open("catalog.gz", "rb") as f:
-    catalog = plistlib.load(f)
-
-url = None
-for p in catalog["Products"].values():
-    meta = p.get("ExtendedMetaInfo", {})
-    if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-        for pkg in p.get("Packages", []):
-            u = pkg.get("URL", "")
-            if "swcdn.apple.com" in u:
-                url = u
-                break
-        if url:
-            break
-
-if not url:
-    sys.exit("No SWCDN URL found!")
-
-print(f"url={url}")
-PYCODE
-        shell: bash
-        env:
-          VERSION: ${{ env.VERSION }}
-
-      - name: Set installer URL output
-        run: |
-          url=$(python3 - <<'EOF'
-import gzip, plistlib, os, sys
-
-version = os.environ["VERSION"]
-
-with gzip.open("catalog.gz", "rb") as f:
-    catalog = plistlib.load(f)
-
-url = None
-for p in catalog["Products"].values():
-    meta = p.get("ExtendedMetaInfo", {})
-    if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-        for pkg in p.get("Packages", []):
-            u = pkg.get("URL", "")
-            if "swcdn.apple.com" in u:
-                url = u
-                break
-        if url:
-            break
-
-if not url:
-    sys.exit("No SWCDN URL found!")
-
-print(url)
-EOF
-)
-          echo "INSTALL_URL=$url" >> $GITHUB_ENV
-        env:
-          VERSION: ${{ env.VERSION }}
+          import gzip, plistlib, os, sys
+          
+          version = os.environ["VERSION"]
+          
+          with gzip.open("catalog.gz", "rb") as f:
+              catalog = plistlib.load(f)
+          
+          url = None
+          for p in catalog["Products"].values():
+              meta = p.get("ExtendedMetaInfo", {})
+              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
+                  for pkg in p.get("Packages", []):
+                      u = pkg.get("URL", "")
+                      if "swcdn.apple.com" in u:
+                          url = u
+                          break
+                  if url:
+                      break
+          
+          if not url:
+              sys.exit("No SWCDN URL found!")
+          
+          print(f"url={url}")
+          PYCODE
+                  shell: bash
+                  env:
+                    VERSION: ${{ env.VERSION }}
+          
+                - name: Set installer URL output
+                  run: |
+                    url=$(python3 - <<'EOF'
+          import gzip, plistlib, os, sys
+          
+          version = os.environ["VERSION"]
+          
+          with gzip.open("catalog.gz", "rb") as f:
+              catalog = plistlib.load(f)
+          
+          url = None
+          for p in catalog["Products"].values():
+              meta = p.get("ExtendedMetaInfo", {})
+              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
+                  for pkg in p.get("Packages", []):
+                      u = pkg.get("URL", "")
+                      if "swcdn.apple.com" in u:
+                          url = u
+                          break
+                  if url:
+                      break
+          
+          if not url:
+              sys.exit("No SWCDN URL found!")
+          
+          print(url)
+          EOF
+          )
+                    echo "INSTALL_URL=$url" >> $GITHUB_ENV
+                  env:
+                    VERSION: ${{ env.VERSION }}
 
       - name: Download macOS InstallAssistant
         run: |
