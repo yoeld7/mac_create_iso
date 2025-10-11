@@ -19,6 +19,7 @@ jobs:
         id: macos
         run: |
           JSON=$(curl -s https://gdmf.apple.com/v2/pmv)
+          # Extract latest public macOS version (e.g., 13.6.1) and marketing name
           VERSION=$(echo "$JSON" | /usr/bin/plutil -extract PublicAssetSets.macOS xml1 -o - - | grep -m1 '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
           NAME=$(echo "$JSON" | /usr/bin/plutil -extract PublicAssetSets.macOS xml1 -o - - | grep -A1 '<string>' | tail -n1 | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
           SAFE_NAME=$(echo "$NAME" | tr -c '[:alnum:]' '_')
@@ -32,71 +33,41 @@ jobs:
           MAJOR=$(echo ${{ env.VERSION }} | cut -d. -f1)
           CATALOG_URL="https://swcatalog.apple.com/content/catalogs/others/index-${MAJOR}.sucatalog.gz"
           curl -sL "$CATALOG_URL" -o catalog.gz
+
+          # Convert gzip catalog to XML plist for Python parsing
+          gzip -d -c catalog.gz > catalog.plist
+          plutil -convert xml1 catalog.plist
+
           python3 <<'PYCODE'
-          import gzip, plistlib, os, sys
-          
-          version = os.environ["VERSION"]
-          
-          with gzip.open("catalog.gz", "rb") as f:
-              catalog = plistlib.load(f)
-          
-          url = None
-          for p in catalog["Products"].values():
-              meta = p.get("ExtendedMetaInfo", {})
-              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-                  for pkg in p.get("Packages", []):
-                      u = pkg.get("URL", "")
-                      if "swcdn.apple.com" in u:
-                          url = u
-                          break
-                  if url:
-                      break
-          
-          if not url:
-              sys.exit("No SWCDN URL found!")
-          
-          print(f"url={url}")
+import plistlib, os, sys
+
+version = os.environ["VERSION"]
+
+with open("catalog.plist", "rb") as f:
+    catalog = plistlib.load(f)
+
+url = None
+for p in catalog["Products"].values():
+    meta = p.get("ExtendedMetaInfo", {})
+    if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
+        for pkg in p.get("Packages", []):
+            u = pkg.get("URL", "")
+            if "swcdn.apple.com" in u:
+                url = u
+                break
+        if url:
+            break
+
+if not url:
+    sys.exit("No SWCDN URL found!")
+
+print(f"::set-output name=url::{url}")
           PYCODE
-                  shell: bash
-                  env:
-                    VERSION: ${{ env.VERSION }}
-          
-                - name: Set installer URL output
-                  run: |
-                    url=$(python3 - <<'EOF'
-          import gzip, plistlib, os, sys
-          
-          version = os.environ["VERSION"]
-          
-          with gzip.open("catalog.gz", "rb") as f:
-              catalog = plistlib.load(f)
-          
-          url = None
-          for p in catalog["Products"].values():
-              meta = p.get("ExtendedMetaInfo", {})
-              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-                  for pkg in p.get("Packages", []):
-                      u = pkg.get("URL", "")
-                      if "swcdn.apple.com" in u:
-                          url = u
-                          break
-                  if url:
-                      break
-          
-          if not url:
-              sys.exit("No SWCDN URL found!")
-          
-          print(url)
-          EOF
-          )
-                    echo "INSTALL_URL=$url" >> $GITHUB_ENV
-                  env:
-                    VERSION: ${{ env.VERSION }}
 
       - name: Download macOS InstallAssistant
         run: |
           echo "Downloading ${{ env.FULL_NAME }}..."
-          curl -L -o ~/InstallAssistant.pkg "${{ env.INSTALL_URL }}"
+          curl -L -o ~/InstallAssistant.pkg "${{ steps.swcdn.outputs.url }}"
 
       - name: Install InstallAssistant.app
         run: |
@@ -128,8 +99,6 @@ jobs:
 
           echo "ISO created: $WORKDIR/$ISO_NAME"
           echo "ISO_PATH=$WORKDIR/$ISO_NAME" >> $GITHUB_ENV
-        env:
-          FULL_NAME: ${{ env.FULL_NAME }}
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
