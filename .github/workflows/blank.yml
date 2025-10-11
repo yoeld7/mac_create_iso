@@ -33,66 +33,66 @@ jobs:
           CATALOG_URL="https://swcatalog.apple.com/content/catalogs/others/index-${MAJOR}.sucatalog.gz"
           curl -sL "$CATALOG_URL" -o catalog.gz
           python3 <<'PYCODE'
-import gzip, plistlib, os, sys
-
-version = os.environ["VERSION"]
-
-with gzip.open("catalog.gz", "rb") as f:
-    catalog = plistlib.load(f)
-
-url = None
-for p in catalog["Products"].values():
-    meta = p.get("ExtendedMetaInfo", {})
-    if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-        for pkg in p.get("Packages", []):
-            u = pkg.get("URL", "")
-            if "swcdn.apple.com" in u:
-                url = u
-                break
-        if url:
-            break
-
-if not url:
-    sys.exit("No SWCDN URL found!")
-
-print(f"::set-output name=url::{url}")
-          PYCODE
-
-      - name: Download macOS InstallAssistant
-        run: |
-          echo "Downloading ${{ env.FULL_NAME }}..."
-          curl -L -o ~/InstallAssistant.pkg "${{ steps.swcdn.outputs.url }}"
-
-      - name: Install InstallAssistant.app
-        run: |
-          sudo installer -pkg ~/InstallAssistant.pkg -target /
-
-      - name: Create bootable ISO
-        run: |
-          APP_PATH=$(ls -d /Applications/Install\ macOS* || true)
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ InstallAssistant not found under /Applications"
-            exit 1
-          fi
-
-          ISO_NAME="${FULL_NAME}.iso"
-          WORKDIR=$(mktemp -d)
-
-          echo "Creating DMG workspace..."
-          hdiutil create -o "$WORKDIR/install_macOS" -size 16000m -volname install_macOS -layout SPUD -fs HFS+J
-
-          echo "Mounting DMG..."
-          hdiutil attach "$WORKDIR/install_macOS.dmg" -mountpoint /Volumes/install_macOS
-
-          echo "Creating bootable media..."
-          sudo "$APP_PATH/Contents/Resources/createinstallmedia" --volume /Volumes/install_macOS --nointeraction
-
-          echo "Converting to ISO..."
-          hdiutil convert "$WORKDIR/install_macOS.dmg" -format UDTO -o "$WORKDIR/$ISO_NAME"
-          mv "$WORKDIR/$ISO_NAME.cdr" "$WORKDIR/$ISO_NAME"
-
-          echo "ISO created: $WORKDIR/$ISO_NAME"
-          echo "ISO_PATH=$WORKDIR/$ISO_NAME" >> $GITHUB_ENV
+          import gzip, plistlib, os, sys
+          
+          version = os.environ["VERSION"]
+          
+          with gzip.open("catalog.gz", "rb") as f:
+              catalog = plistlib.load(f)
+          
+          url = None
+          for p in catalog["Products"].values():
+              meta = p.get("ExtendedMetaInfo", {})
+              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
+                  for pkg in p.get("Packages", []):
+                      u = pkg.get("URL", "")
+                      if "swcdn.apple.com" in u:
+                          url = u
+                          break
+                  if url:
+                      break
+          
+          if not url:
+              sys.exit("No SWCDN URL found!")
+          
+          print(f"::set-output name=url::{url}")
+                    PYCODE
+          
+                - name: Download macOS InstallAssistant
+                  run: |
+                    echo "Downloading ${{ env.FULL_NAME }}..."
+                    curl -L -o ~/InstallAssistant.pkg "${{ steps.swcdn.outputs.url }}"
+          
+                - name: Install InstallAssistant.app
+                  run: |
+                    sudo installer -pkg ~/InstallAssistant.pkg -target /
+          
+                - name: Create bootable ISO
+                  run: |
+                    APP_PATH=$(ls -d /Applications/Install\ macOS* || true)
+                    if [ -z "$APP_PATH" ]; then
+                      echo "❌ InstallAssistant not found under /Applications"
+                      exit 1
+                    fi
+          
+                    ISO_NAME="${FULL_NAME}.iso"
+                    WORKDIR=$(mktemp -d)
+          
+                    echo "Creating DMG workspace..."
+                    hdiutil create -o "$WORKDIR/install_macOS" -size 16000m -volname install_macOS -layout SPUD -fs HFS+J
+          
+                    echo "Mounting DMG..."
+                    hdiutil attach "$WORKDIR/install_macOS.dmg" -mountpoint /Volumes/install_macOS
+          
+                    echo "Creating bootable media..."
+                    sudo "$APP_PATH/Contents/Resources/createinstallmedia" --volume /Volumes/install_macOS --nointeraction
+          
+                    echo "Converting to ISO..."
+                    hdiutil convert "$WORKDIR/install_macOS.dmg" -format UDTO -o "$WORKDIR/$ISO_NAME"
+                    mv "$WORKDIR/$ISO_NAME.cdr" "$WORKDIR/$ISO_NAME"
+          
+                    echo "ISO created: $WORKDIR/$ISO_NAME"
+                    echo "ISO_PATH=$WORKDIR/$ISO_NAME" >> $GITHUB_ENV
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
