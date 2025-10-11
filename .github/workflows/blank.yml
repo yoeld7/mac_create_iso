@@ -1,0 +1,124 @@
+name: Build Latest macOS ISO
+
+on:
+  workflow_dispatch:    # Manual run only
+
+jobs:
+  build-macos-iso:
+    runs-on: macos-latest
+    steps:
+      - name: Free up disk space
+        run: |
+          # Remove large, unused packages
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /Library/Android
+          
+          # Remove cached tools and user caches
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf "$HOME/.cache"
+          
+          # Remove Xcode to free ~10–15GB
+          sudo rm -rf /Applications/Xcode.app
+          
+          # Clean temporary files
+          sudo rm -rf /tmp/*
+          
+          df -h
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependency
+        run: pip install requests
+
+      - name: Get latest macOS info and URL
+        id: macos
+        run: |
+          python <<'PYCODE'
+          import requests, plistlib, gzip, io, sys, re
+
+          def get_latest_macos_info():
+              data = requests.get("https://gdmf.apple.com/v2/pmv").json()
+              macos = data["PublicAssetSets"]["macOS"]
+              pub = [r for r in macos if r.get("ReleaseType") == "Public"]
+              latest = sorted(pub, key=lambda x: x["PostingDate"], reverse=True)[0]
+              return {
+                  "version": latest["ProductVersion"],
+                  "name": latest["ProductMarketingVersion"]
+              }
+
+          def get_swcdn_link(version):
+              major = version.split(".")[0]
+              url = f"https://swcatalog.apple.com/content/catalogs/others/index-{major}.sucatalog.gz"
+              resp = requests.get(url)
+              catalog = plistlib.load(gzip.GzipFile(fileobj=io.BytesIO(resp.content)))
+
+              for p in catalog["Products"].values():
+                  meta = p.get("ExtendedMetaInfo", {})
+                  if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
+                      for pkg in p.get("Packages", []):
+                          u = pkg.get("URL", "")
+                          if "swcdn.apple.com" in u:
+                              return u
+              return None
+
+          info = get_latest_macos_info()
+          url = get_swcdn_link(info["version"])
+          safe_name = re.sub(r'[^A-Za-z0-9]+', '_', info["name"]).strip('_')
+          full_name = f"{safe_name}_{info['version']}"
+
+          if not url:
+              sys.exit("No SWCDN URL found.")
+
+          print(f"::set-output name=url::{url}")
+          print(f"::set-output name=version::{info['version']}")
+          print(f"::set-output name=name::{info['name']}")
+          print(f"::set-output name=full_name::{full_name}")
+          PYCODE
+
+      - name: Download macOS InstallAssistant
+        run: |
+          echo "Downloading ${{ steps.macos.outputs.name }}..."
+          curl -L -o ~/InstallAssistant.pkg "${{ steps.macos.outputs.url }}"
+
+      - name: Install InstallAssistant.app
+        run: |
+          echo "Installing package..."
+          sudo installer -pkg ~/InstallAssistant.pkg -target /
+
+      - name: Create bootable ISO
+        run: |
+          APP_PATH=$(ls -d /Applications/Install\ macOS* || true)
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ InstallAssistant not found under /Applications"
+            exit 1
+          fi
+
+          ISO_NAME="${{ steps.macos.outputs.full_name }}.iso"
+          WORKDIR=$(mktemp -d)
+
+          echo "Creating DMG workspace..."
+          hdiutil create -o "$WORKDIR/install_macOS" -size 16000m -volname install_macOS -layout SPUD -fs HFS+J
+
+          echo "Mounting DMG..."
+          hdiutil attach "$WORKDIR/install_macOS.dmg" -mountpoint /Volumes/install_macOS
+
+          echo "Creating bootable media..."
+          sudo "$APP_PATH/Contents/Resources/createinstallmedia" --volume /Volumes/install_macOS --nointeraction
+
+          echo "Converting to ISO..."
+          hdiutil convert "$WORKDIR/install_macOS.dmg" -format UDTO -o "$WORKDIR/$ISO_NAME"
+          mv "$WORKDIR/$ISO_NAME.cdr" "$WORKDIR/$ISO_NAME"
+
+          echo "ISO created: $WORKDIR/$ISO_NAME"
+          echo "ISO_PATH=$WORKDIR/$ISO_NAME" >> $GITHUB_ENV
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.macos.outputs.full_name }}
+          path: ${{ env.ISO_PATH }}
