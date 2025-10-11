@@ -39,30 +39,30 @@ jobs:
           plutil -convert xml1 catalog.plist
 
           python3 <<'PYCODE'
-import plistlib, os, sys
-
-version = os.environ["VERSION"]
-
-with open("catalog.plist", "rb") as f:
-    catalog = plistlib.load(f)
-
-url = None
-for p in catalog["Products"].values():
-    meta = p.get("ExtendedMetaInfo", {})
-    if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-        for pkg in p.get("Packages", []):
-            u = pkg.get("URL", "")
-            if "swcdn.apple.com" in u:
-                url = u
-                break
-        if url:
-            break
-
-if not url:
-    sys.exit("No SWCDN URL found!")
-
-print(f"::set-output name=url::{url}")
-          PYCODE
+          import plistlib, os, sys
+          
+          version = os.environ["VERSION"]
+          
+          with open("catalog.plist", "rb") as f:
+              catalog = plistlib.load(f)
+          
+          url = None
+          for p in catalog["Products"].values():
+              meta = p.get("ExtendedMetaInfo", {})
+              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
+                  for pkg in p.get("Packages", []):
+                      u = pkg.get("URL", "")
+                      if "swcdn.apple.com" in u:
+                          url = u
+                          break
+                  if url:
+                      break
+          
+          if not url:
+              sys.exit("No SWCDN URL found!")
+          
+          print(f"::set-output name=url::{url}")
+                    PYCODE
 
       - name: Download macOS InstallAssistant
         run: |
