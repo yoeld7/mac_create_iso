@@ -10,10 +10,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Mist CLI and dependencies
+      - name: Install dependencies
         run: |
           brew install aria2
-          brew install ninxsoft/mist/mist-cli
+
+      - name: Download Mist CLI binary
+        run: |
+          curl -L -o mist https://github.com/ninxsoft/mist/releases/latest/download/mist-cli-macos-arm64
+          chmod +x mist
+          sudo mv mist /usr/local/bin/mist
 
       - name: Download latest macOS installer using Mist
         run: |
