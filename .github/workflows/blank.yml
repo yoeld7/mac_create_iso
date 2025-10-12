@@ -17,11 +17,12 @@ jobs:
       - name: Clone gibMacOS
         run: |
           git clone https://github.com/corpnewt/gibMacOS.git
+          chmod +x gibMacOS/gibMacOS.command
 
-      - name: Download latest macOS using macOSDownloader.py
+      - name: Run gibMacOS non-interactively
         run: |
           cd gibMacOS
-          python3 scripts/macOSDownloader.py --auto
+          ./gibMacOS.command --no-interactive
 
       - name: Locate InstallAssistant.pkg
         run: |
