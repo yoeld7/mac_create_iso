@@ -52,3 +52,9 @@ jobs:
           hdiutil convert "$WORKDIR/macOS.cdr.dmg" -format UDTO -o "$WORKDIR/$ISO_NAME"
           mv "$WORKDIR/$ISO_NAME.cdr" "$WORKDIR/$ISO_NAME"
           echo "✅ ISO created at $WORKDIR/$ISO_NAME"
+    
+      - name: Upload ISO as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-ISO-${{ steps.get_version.outputs.version }}
+          path: ~/macOS-ISO/macOS-${{ steps.get_version.outputs.version }}.iso
