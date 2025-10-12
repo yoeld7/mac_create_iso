@@ -10,10 +10,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Homebrew dependencies
         run: |
           brew install aria2
-          pip3 install xattr
+
+      - name: Set up Python virtual environment
+        run: |
+          python3 -m venv ~/macosenv
+          source ~/macosenv/bin/activate
+          pip install xattr
 
       - name: Download installinstallmacos.py
         run: |
@@ -22,6 +27,7 @@ jobs:
 
       - name: Download latest macOS installer
         run: |
+          source ~/macosenv/bin/activate
           mkdir -p ~/macOSISO
           ./installinstallmacos.py --latest --output-dir ~/macOSISO
 
@@ -48,4 +54,11 @@ jobs:
       - name: Convert to ISO
         run: |
           hdiutil detach /Volumes/macOSInstaller
-          hdiutil
+          hdiutil convert ~/macOSISO/macOSInstaller.dmg -format UDTO -o ~/macOSISO/macOSInstaller.iso
+          mv ~/macOSISO/macOSInstaller.iso.cdr ~/macOSISO/macOSInstaller.iso
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOSInstaller.iso
+          path: ~/macOSISO/macOSInstaller.iso
