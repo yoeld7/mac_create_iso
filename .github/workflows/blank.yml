@@ -7,6 +7,25 @@ jobs:
   create-iso:
     runs-on: macos-latest  # Requires a self-hosted macOS runner
     steps:
+      - name: Free up disk space
+        run: |
+          # Remove large, unused packages
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /Library/Android
+          
+          # Remove cached tools and user caches
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf "$HOME/.cache"
+          
+          # Remove Xcode to free ~10–15GB
+          sudo rm -rf /Applications/Xcode.app
+          
+          # Clean temporary files
+          sudo rm -rf /tmp/*
+          
+          df -h
       - name: Get latest macOS version
         id: get_version
         run: |
