@@ -1,4 +1,4 @@
-name: Build Latest macOS ISO
+name: Build macOS ISO with installinstallmacos.py
 
 on:
   workflow_dispatch:
@@ -14,45 +14,20 @@ jobs:
         run: |
           brew install aria2
 
-      - name: Clone gibMacOS
+      - name: Download installinstallmacos.py
         run: |
-          git clone https://github.com/corpnewt/gibMacOS.git
+          curl -O https://raw.githubusercontent.com/munki/macadmin-scripts/main/installinstallmacos.py
+          chmod +x installinstallmacos.py
 
-      - name: Parse and download latest macOS
-        shell: bash
-        run: |
-          cd gibMacOS
-          echo "📥 Downloading catalog..."
-          python3 gibMacOS.py -r > catalog.txt
-
-          echo "📄 Previewing catalog:"
-          head -n 40 catalog.txt
-
-          echo "🔍 Extracting latest InstallAssistantAuto product ID..."
-          PRODUCT=$(grep -B1 "InstallAssistantAuto" catalog.txt | awk '{print $1}' | tail -n 1)
-
-          if [ -z "$PRODUCT" ]; then
-            echo "❌ No product ID found. Exiting."
-            exit 1
-          fi
-
-          echo "✅ Detected product ID: $PRODUCT"
-          python3 gibMacOS.py -p "$PRODUCT" -d
-
-      - name: Locate InstallAssistant.pkg
-        shell: bash
-        run: |
-          INSTALLER=$(find gibMacOS/macOS\ Downloads/publicrelease/ -name "InstallAssistant.pkg" | sort | tail -n 1)
-          if [ -z "$INSTALLER" ]; then
-            echo "❌ InstallAssistant.pkg not found. Exiting."
-            exit 1
-          fi
-          echo "INSTALLER_PATH=$INSTALLER" >> $GITHUB_ENV
-
-      - name: Extract macOS Installer
+      - name: Download latest macOS installer
         run: |
           mkdir -p ~/macOSISO
-          pkgutil --expand "$INSTALLER_PATH" ~/macOSISO/expanded
+          ./installinstallmacos.py --latest --output-dir ~/macOSISO
+
+      - name: Expand InstallAssistant.pkg
+        run: |
+          INSTALLER=$(find ~/macOSISO -name "InstallAssistant.pkg" | sort | tail -n 1)
+          pkgutil --expand "$INSTALLER" ~/macOSISO/expanded
           cd ~/macOSISO/expanded
           tar -xf Payload
           mv "Install macOS"*.app /Applications/
