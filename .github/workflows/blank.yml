@@ -5,35 +5,50 @@ on:
 
 jobs:
   create-iso:
-    runs-on: macos-latest  # Use a self-hosted macOS runner
+    runs-on: macos-latest  # Requires a self-hosted macOS runner
     steps:
-      - name: Get latest macOS version name
+      - name: Get latest macOS version
         id: get_version
         run: |
+          echo "Scanning for available macOS installers..."
           latest_version=$(softwareupdate --list-full-installers | \
-            grep -Eo 'macOS [A-Za-z]+ [0-9]+\.[0-9]+' | \
+            grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | \
             sort -V | tail -n 1)
+          if [ -z "$latest_version" ]; then
+            echo "No macOS installer version found."
+            exit 1
+          fi
           echo "Latest macOS version: $latest_version"
-          echo "version_name=$latest_version" >> $GITHUB_OUTPUT
+          echo "version=$latest_version" >> $GITHUB_OUTPUT
 
       - name: Download macOS installer
         run: |
-          version="${{ steps.get_version.outputs.version_name }}"
-          echo "Downloading installer for $version"
-          # This command downloads the full installer to /Applications
-          softwareupdate --fetch-full-installer --full-installer-version "$version"
+          version="${{ steps.get_version.outputs.version }}"
+          echo "Attempting to download installer for macOS $version..."
+          softwareupdate --fetch-full-installer --full-installer-version "$version" || {
+            echo "Installer for $version not found. Trying fallback..."
+            softwareupdate --fetch-full-installer
+          }
 
       - name: Create ISO using createinstallmedia
         run: |
-          INSTALLER_PATH="/Applications/Install macOS*.app"
-          ISO_NAME="macOS-${{ steps.get_version.outputs.version_name }}.iso"
+          INSTALLER_PATH=$(ls /Applications | grep -i 'Install macOS' | head -n 1)
+          if [ -z "$INSTALLER_PATH" ]; then
+            echo "Installer app not found in /Applications."
+            exit 1
+          fi
+          ISO_NAME="macOS-${{ steps.get_version.outputs.version }}.iso"
           WORKDIR="$HOME/macOS-ISO"
           mkdir -p "$WORKDIR"
+          echo "Creating blank disk image..."
           hdiutil create -o "$WORKDIR/macOS.cdr" -size 16000m -layout SPUD -fs HFS+J
           hdiutil attach "$WORKDIR/macOS.cdr.dmg" -noverify -mountpoint /Volumes/install_build
-          sudo "$INSTALLER_PATH/Contents/Resources/createinstallmedia" \
+          echo "Running createinstallmedia..."
+          sudo "/Applications/$INSTALLER_PATH/Contents/Resources/createinstallmedia" \
             --volume /Volumes/install_build --nointeraction
+          echo "Detaching volume..."
           hdiutil detach /Volumes/Install\ macOS*
+          echo "Converting to ISO..."
           hdiutil convert "$WORKDIR/macOS.cdr.dmg" -format UDTO -o "$WORKDIR/$ISO_NAME"
           mv "$WORKDIR/$ISO_NAME.cdr" "$WORKDIR/$ISO_NAME"
-          echo "ISO created at $WORKDIR/$ISO_NAME"
+          echo "✅ ISO created at $WORKDIR/$ISO_NAME"
