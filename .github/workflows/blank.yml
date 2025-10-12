@@ -11,26 +11,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: brew install aria2
-
-      - name: Fetch latest InstallAssistant.pkg URL
         run: |
-          curl -O https://swscan.apple.com/content/catalogs/others/index-13-12-11-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz
-          gunzip index-*.gz
-          URL=$(grep -Eo 'https://[^"]+InstallAssistant\.pkg' index-* | sort | tail -n 1)
-          echo "Latest InstallAssistant.pkg URL: $URL"
-          echo "INSTALLER_URL=$URL" >> $GITHUB_ENV
+          brew install aria2
 
-      - name: Download InstallAssistant.pkg
+      - name: Clone gibMacOS
         run: |
-          mkdir -p ~/macOSISO
-          aria2c -x 16 -s 16 -d ~/macOSISO "$INSTALLER_URL"
+          git clone https://github.com/corpnewt/gibMacOS.git
+          cd gibMacOS
+          chmod +x gibMacOS.command
+
+      - name: Run gibMacOS to download latest macOS
+        run: |
+          cd gibMacOS
+          ./gibMacOS.command --auto
+
+      - name: Locate InstallAssistant.pkg
+        run: |
+          INSTALLER=$(find gibMacOS/macOS\ Downloads/publicrelease/ -name "InstallAssistant.pkg" | sort | tail -n 1)
+          echo "INSTALLER_PATH=$INSTALLER" >> $GITHUB_ENV
 
       - name: Extract macOS Installer
         run: |
-          cd ~/macOSISO
-          pkgutil --expand InstallAssistant.pkg expanded
-          cd expanded
+          mkdir -p ~/macOSISO
+          pkgutil --expand "$INSTALLER_PATH" ~/macOSISO/expanded
+          cd ~/macOSISO/expanded
           tar -xf Payload
           mv "Install macOS"*.app /Applications/
 
@@ -42,7 +46,7 @@ jobs:
         run: |
           hdiutil attach ~/macOSISO/macOSInstaller.dmg -noverify -mountpoint /Volumes/macOSInstaller
 
-      - name: Run createinstallmedia
+      - name: Create bootable installer
         run: |
           sudo /Applications/Install\ macOS*.app/Contents/Resources/createinstallmedia --volume /Volumes/macOSInstaller --nointeraction
 
