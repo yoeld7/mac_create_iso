@@ -17,13 +17,15 @@ jobs:
       - name: Clone gibMacOS
         run: |
           git clone https://github.com/corpnewt/gibMacOS.git
-          cd gibMacOS
-          chmod +x gibMacOS.command
+          chmod +x gibMacOS/gibMacOS.command
 
       - name: Parse latest macOS product ID
+        shell: bash
         run: |
           cd gibMacOS
           python3 gibMacOS.py -r > catalog.txt
+          echo "Catalog preview:"
+          head -n 20 catalog.txt
           PRODUCT=$(grep -B1 "InstallAssistantAuto" catalog.txt | head -n 1 | awk '{print $1}')
           echo "Detected latest product ID: $PRODUCT"
           echo "PRODUCT_ID=$PRODUCT" >> $GITHUB_ENV
