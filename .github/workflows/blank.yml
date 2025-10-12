@@ -17,14 +17,18 @@ jobs:
       - name: Clone gibMacOS
         run: |
           git clone https://github.com/corpnewt/gibMacOS.git
-          chmod +x gibMacOS/gibMacOS.command
 
-      - name: Run gibMacOS non-interactively
+      - name: Parse and download latest macOS
+        shell: bash
         run: |
           cd gibMacOS
-          ./gibMacOS.command --no-interactive
+          python3 gibMacOS.py -r > catalog.txt
+          PRODUCT=$(grep -B1 "InstallAssistantAuto" catalog.txt | awk '{print $1}' | tail -n 1)
+          echo "Detected product ID: $PRODUCT"
+          python3 gibMacOS.py -p "$PRODUCT" -d
 
       - name: Locate InstallAssistant.pkg
+        shell: bash
         run: |
           INSTALLER=$(find gibMacOS/macOS\ Downloads/publicrelease/ -name "InstallAssistant.pkg" | sort | tail -n 1)
           echo "INSTALLER_PATH=$INSTALLER" >> $GITHUB_ENV
