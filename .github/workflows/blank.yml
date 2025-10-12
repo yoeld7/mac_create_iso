@@ -1,4 +1,4 @@
-name: Build macOS ISO with installinstallmacos.py
+name: Build macOS ISO with Mist CLI
 
 on:
   workflow_dispatch:
@@ -10,26 +10,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Homebrew dependencies
+      - name: Install Mist CLI and dependencies
         run: |
           brew install aria2
+          brew install ninxsoft/mist/mist-cli
 
-      - name: Set up Python virtual environment
+      - name: Download latest macOS installer using Mist
         run: |
-          python3 -m venv ~/macosenv
-          source ~/macosenv/bin/activate
-          pip install xattr
-
-      - name: Download installinstallmacos.py
-        run: |
-          curl -O https://raw.githubusercontent.com/munki/macadmin-scripts/main/installinstallmacos.py
-          chmod +x installinstallmacos.py
-
-      - name: Download latest macOS installer
-        run: |
-          source ~/macosenv/bin/activate
           mkdir -p ~/macOSISO
-          ./installinstallmacos.py --latest --output-dir ~/macOSISO
+          mist download --latest --output ~/macOSISO
 
       - name: Expand InstallAssistant.pkg
         run: |
