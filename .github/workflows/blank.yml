@@ -4,104 +4,56 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-macos-iso:
+  build-iso:
     runs-on: macos-latest
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: pip install certifi
+        run: brew install aria2
 
-      - name: Get latest macOS version and name
-        id: macos
+      - name: Fetch latest InstallAssistant.pkg URL
         run: |
-          JSON=$(curl -s https://gdmf.apple.com/v2/pmv)
-          # Extract latest public macOS version (e.g., 13.6.1) and marketing name
-          VERSION=$(echo "$JSON" | /usr/bin/plutil -extract PublicAssetSets.macOS xml1 -o - - | grep -m1 '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
-          NAME=$(echo "$JSON" | /usr/bin/plutil -extract PublicAssetSets.macOS xml1 -o - - | grep -A1 '<string>' | tail -n1 | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
-          SAFE_NAME=$(echo "$NAME" | tr -c '[:alnum:]' '_')
-          FULL_NAME="${SAFE_NAME}_${VERSION}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "FULL_NAME=$FULL_NAME" >> $GITHUB_ENV
+          curl -O https://swscan.apple.com/content/catalogs/others/index-13-12-11-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz
+          gunzip index-*.gz
+          URL=$(grep -Eo 'https://[^"]+InstallAssistant\.pkg' index-* | sort | tail -n 1)
+          echo "Latest InstallAssistant.pkg URL: $URL"
+          echo "INSTALLER_URL=$URL" >> $GITHUB_ENV
 
-      - name: Get SWCDN installer URL
-        id: swcdn
+      - name: Download InstallAssistant.pkg
         run: |
-          MAJOR=$(echo ${{ env.VERSION }} | cut -d. -f1)
-          CATALOG_URL="https://swcatalog.apple.com/content/catalogs/others/index-${MAJOR}.sucatalog.gz"
-          curl -sL "$CATALOG_URL" -o catalog.gz
+          mkdir -p ~/macOSISO
+          aria2c -x 16 -s 16 -d ~/macOSISO "$INSTALLER_URL"
 
-          # Convert gzip catalog to XML plist for Python parsing
-          gzip -d -c catalog.gz > catalog.plist
-          plutil -convert xml1 catalog.plist
-
-          python3 <<'PYCODE'
-          import plistlib, os, sys
-          
-          version = os.environ["VERSION"]
-          
-          with open("catalog.plist", "rb") as f:
-              catalog = plistlib.load(f)
-          
-          url = None
-          for p in catalog["Products"].values():
-              meta = p.get("ExtendedMetaInfo", {})
-              if meta.get("ProductName", "").startswith("macOS") and meta.get("ProductVersion", "").startswith(version):
-                  for pkg in p.get("Packages", []):
-                      u = pkg.get("URL", "")
-                      if "swcdn.apple.com" in u:
-                          url = u
-                          break
-                  if url:
-                      break
-          
-          if not url:
-              sys.exit("No SWCDN URL found!")
-          
-          print(f"::set-output name=url::{url}")
-                    PYCODE
-
-      - name: Download macOS InstallAssistant
+      - name: Extract macOS Installer
         run: |
-          echo "Downloading ${{ env.FULL_NAME }}..."
-          curl -L -o ~/InstallAssistant.pkg "${{ steps.swcdn.outputs.url }}"
+          cd ~/macOSISO
+          pkgutil --expand InstallAssistant.pkg expanded
+          cd expanded
+          tar -xf Payload
+          mv "Install macOS"*.app /Applications/
 
-      - name: Install InstallAssistant.app
+      - name: Create disk image
         run: |
-          sudo installer -pkg ~/InstallAssistant.pkg -target /
+          hdiutil create -o ~/macOSISO/macOSInstaller -size 16000m -volname macOSInstaller -layout SPUD -fs HFS+
 
-      - name: Create bootable ISO
+      - name: Mount disk image
         run: |
-          APP_PATH=$(ls -d /Applications/Install\ macOS* || true)
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ InstallAssistant not found under /Applications"
-            exit 1
-          fi
+          hdiutil attach ~/macOSISO/macOSInstaller.dmg -noverify -mountpoint /Volumes/macOSInstaller
 
-          ISO_NAME="${FULL_NAME}.iso"
-          WORKDIR=$(mktemp -d)
+      - name: Run createinstallmedia
+        run: |
+          sudo /Applications/Install\ macOS*.app/Contents/Resources/createinstallmedia --volume /Volumes/macOSInstaller --nointeraction
 
-          echo "Creating DMG workspace..."
-          hdiutil create -o "$WORKDIR/install_macOS" -size 16000m -volname install_macOS -layout SPUD -fs HFS+J
-
-          echo "Mounting DMG..."
-          hdiutil attach "$WORKDIR/install_macOS.dmg" -mountpoint /Volumes/install_macOS
-
-          echo "Creating bootable media..."
-          sudo "$APP_PATH/Contents/Resources/createinstallmedia" --volume /Volumes/install_macOS --nointeraction
-
-          echo "Converting to ISO..."
-          hdiutil convert "$WORKDIR/install_macOS.dmg" -format UDTO -o "$WORKDIR/$ISO_NAME"
-          mv "$WORKDIR/$ISO_NAME.cdr" "$WORKDIR/$ISO_NAME"
-
-          echo "ISO created: $WORKDIR/$ISO_NAME"
-          echo "ISO_PATH=$WORKDIR/$ISO_NAME" >> $GITHUB_ENV
+      - name: Convert to ISO
+        run: |
+          hdiutil detach /Volumes/macOSInstaller
+          hdiutil convert ~/macOSISO/macOSInstaller.dmg -format UDTO -o ~/macOSISO/macOSInstaller.iso
+          mv ~/macOSISO/macOSInstaller.iso.cdr ~/macOSISO/macOSInstaller.iso
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FULL_NAME }}
-          path: ${{ env.ISO_PATH }}
+          name: macOSInstaller.iso
+          path: ~/macOSISO/macOSInstaller.iso
