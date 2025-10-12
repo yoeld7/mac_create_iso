@@ -20,10 +20,18 @@ jobs:
           cd gibMacOS
           chmod +x gibMacOS.command
 
-      - name: Run gibMacOS to download latest macOS
+      - name: Parse latest macOS product ID
         run: |
           cd gibMacOS
-          ./gibMacOS.command --auto
+          python3 gibMacOS.py -r > catalog.txt
+          PRODUCT=$(grep -B1 "InstallAssistantAuto" catalog.txt | head -n 1 | awk '{print $1}')
+          echo "Detected latest product ID: $PRODUCT"
+          echo "PRODUCT_ID=$PRODUCT" >> $GITHUB_ENV
+
+      - name: Download latest macOS installer
+        run: |
+          cd gibMacOS
+          python3 gibMacOS.py -p "$PRODUCT_ID" -d
 
       - name: Locate InstallAssistant.pkg
         run: |
