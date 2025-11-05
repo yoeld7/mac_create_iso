@@ -60,7 +60,7 @@ jobs:
           WORKDIR="$HOME/macOS-ISO"
           mkdir -p "$WORKDIR"
           echo "Creating blank disk image..."
-          hdiutil create -o "$WORKDIR/macOS.cdr" -size 18280m -layout SPUD -fs HFS+J
+          hdiutil create -o "$WORKDIR/macOS.cdr" -size 18610m -layout SPUD -fs HFS+J
           hdiutil attach "$WORKDIR/macOS.cdr.dmg" -noverify -mountpoint /Volumes/install_build
           echo "Running createinstallmedia..."
           sudo "/Applications/$INSTALLER_PATH/Contents/Resources/createinstallmedia" \
